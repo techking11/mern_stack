@@ -5,12 +5,17 @@ import { ThemeProvider, createTheme } from "@mui/material/styles";
 import { pink, grey } from "@mui/material/colors";
 
 import App from "./App";
-import { fetchNotis, fetchVerify } from "./libs/fetcher";
+import { fetchNotis, fetchVerify, getToken } from "./libs/fetcher";
 
 export const ThemeContext = createContext();
 export const AuthContext = createContext();
 export const UIContext = createContext();
 export const NotiContext = createContext();
+
+const wsc = new WebSocket(import.meta.env.VITE_WS_URL);
+wsc.onopen = () => {
+	wsc.send(getToken());
+}
 
 export default function ThemedApp() {
 	const [mode, setMode] = useState("dark");
@@ -21,19 +26,20 @@ export default function ThemedApp() {
 	const [auth, setAuth] = useState(false);
 	const [authUser, setAuthUser] = useState({});
 
+	wsc.onmessage = e => {
+		(async() => {
+			const notis = await fetchNotis();
+			setNotiCount(notis.filter(noti => !noti.read).length);
+		})();
+	}
+
 	useEffect(() => {
-		setInterval(() => {
-			(async () => {
-				const notis = await fetchNotis();
-				setNotiCount(notis.filter(noti => !noti.read).length);
-			})();
-		}, 5000);
 
 		(async () => {
 			const user = await fetchVerify();
 
-			user.following = user.following || [];
-			user.followers = user.followers || [];
+			user.following = user?.following || [];
+			user.followers = user?.followers || [];
 
 			if (user) {
 				setAuth(true);

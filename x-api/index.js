@@ -3,6 +3,10 @@ require("dotenv").config();
 const express = require("express");
 const app = express();
 
+require('express-ws')(app);
+
+const clients = [];
+
 const multer = require("multer");
 const upload = multer({ dest: process.env.IMAGES_PATH });
 
@@ -25,6 +29,22 @@ const xposts = xdb.collection("posts");
 const xusers = xdb.collection("users");
 
 app.use("/images", express.static(process.env.IMAGES_PATH));
+
+app.ws("/connect", (wss, _req) => {
+	ws.on("message", token => {
+		console.log("Message received.");
+
+		jwt.verify(token, process.env.JWT_SECRET, ( err, user ) => {
+			if(err) return false;
+
+			if(!clients.find( client => client.uid === user._id)) {
+				wss.uid = user._id;
+				clients.push(wss);
+				console.log("Added a new client.");
+			}
+		});
+	});
+});
 
 const auth = function (req, res, next) {
 	const { authorization } = req.headers;
@@ -201,12 +221,12 @@ app.get("/posts", auth, async function (req, res) {
 				{
 					$match: { type: "post" },
 				},
-				// Only show following users' posts
-				// {
-				// 	$match: {
-				// 		owner: { $in: user.following },
-				// 	},
-				// },
+				//Only show following users' posts
+				{
+					$match: {
+						owner: { $in: user.following },
+					},
+				},
 				{
 					$lookup: {
 						localField: "owner",
@@ -526,6 +546,12 @@ app.post("/notis", auth, async (req, res) => {
 	let noti = await xdb.collection("notis").findOne({
 		_id: result.insertedId,
 	});
+
+	clients.map(client => {
+		if( client.uid === post.owner.toString()) {
+			client.send("noti updated");
+		}
+	})
 
 	return res.status(201).json(noti);
 });
